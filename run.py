@@ -1,3 +1,5 @@
+import yaml
+
 from smolagents import OpenAIServerModel, ToolCallingAgent, FinalAnswerTool
 from smolagents.agents import ToolOutput, ActionOutput
 from tools import TimeTool, QueryTool, RagTool
@@ -15,6 +17,9 @@ model = OpenAIServerModel(
 # for chunk in output:
 #     print(chunk.content, end='', flush=True)
 
+with open('cfg.yaml') as f:
+    cfg = yaml.safe_load(f)
+
 agent = ToolCallingAgent(
     tools = [
         TimeTool(),
@@ -23,6 +28,7 @@ agent = ToolCallingAgent(
         FinalAnswerTool()
     ],
     model=model,
+    prompt_templates=cfg['prompts'],
     max_steps=10,
     verbosity_level=2,
 )
@@ -30,7 +36,7 @@ agent = ToolCallingAgent(
 # print(agent.prompt_templates)
 # exit()
 
-result = agent.run('昨天是几号', stream=True)
+result = agent.run('绍兴6月份的经济情况如何', stream=True)
 for chunk in result:
     if isinstance(chunk, ToolOutput):
         print(f"[Tool Output] ---------------")

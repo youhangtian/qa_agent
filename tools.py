@@ -34,23 +34,22 @@ kb_chat_prompt = '''你是一个智能问答助手，根据文档信息回答用
 '''
 
 model_url = 'http://localhost:9997/v1/chat/completions'
-
-class TimeTool(Tool):
-    name = 'time_tool'
-    description = '''获取当前时间'''
-    inputs = {}
-    output_type = 'string'
-
-    def __init__(self):
-        super().__init__()
-
-    def forward(self):
-        time_now = time.strftime('今天是%Y年%m月%d日')
-        return time_now
-
-class QueryTool(Tool):
-    name = 'query_tool'
-    description = '''通过查询数据库来回答用户问题，数据库里有绍兴市每天各种事件的上报情况，包括事件类型、事件数量、上报时间等信息'''
+    
+def get_cursor():
+    db = pymysql.connect(
+        host='localhost',
+        port=3306,
+        user='tyh',
+        password='123456',
+        database='test',
+        charset='utf8'
+    )
+    cursor = db.cursor(cursor=pymysql.cursors.DictCursor)
+    return cursor
+    
+class TextToSqlTool(Tool):
+    name = 'text_to_sql_tool'
+    description = '''将用户的自然语言问题转换为数据库的SQL查询语句，数据库里有绍兴市每天各种事件的上报情况，包括事件类型、事件数量、上报时间等信息'''
     inputs = {
         'question': {
             'type': 'string',
@@ -61,25 +60,11 @@ class QueryTool(Tool):
 
     def __init__(self):
         super().__init__()
-        
         self.model_name = 'qwen7b'
-        self.mysql_host = 'localhost'
-        self.mysql_port = 3306
-        self.mysql_user = 'tyh'
-        self.mysql_password = '123456'
-        self.mysql_database = 'test'
         self.table_name = 'zkyc_event_info_dt'
 
     def forward(self, question: str):
-        db = pymysql.connect(
-            host=self.mysql_host,
-            port=self.mysql_port,
-            user=self.mysql_user,
-            password=self.mysql_password,
-            database=self.mysql_database,
-            charset='utf8'
-        )
-        cursor = db.cursor(cursor=pymysql.cursors.DictCursor)
+        cursor = get_cursor()
 
         table_info = ''
         try:
@@ -102,6 +87,24 @@ class QueryTool(Tool):
         output = response.json()['choices'][0]['message']['content']
 
         sql_string = output.split('```sql')[1].split('```')[0].strip()
+        return sql_string
+
+class QueryTool(Tool):
+    name = 'query_tool'
+    description = '''通过sql代码查询数据库'''
+    inputs = {
+        'sql_string': {
+            'type': 'string',
+            'description': 'sql代码'
+        }
+    }
+    output_type = 'string'
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, sql_string: str):
+        cursor = get_cursor()
 
         data = []
         try:
@@ -110,19 +113,33 @@ class QueryTool(Tool):
         except Exception as e:
             print(f"Error executing SQL: {e}")
 
-        print('sql string:', sql_string)
-        print('data:', data)
-
         return '\n'.join([str(item) for item in data])
     
 
-class RagTool(Tool):
-    name = 'rag_tool'
-    description = '''通过检索知识库来回答用户问题，知识库里是绍兴市每天的城市运行情况，如经济活力、交通运行、环境质量等方面的信息'''
+class TimeTool(Tool):
+    name = 'time_tool'
+    description = '''获取当前时间'''
+    inputs = {}
+    output_type = 'string'
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self):
+        time_now = time.strftime('今天是%Y年%m月%d日')
+        return time_now
+    
+class DocSearchTool(Tool):
+    name = 'doc_search_tool'
+    description = '''从知识库里查找出回答用户问题所需的文档信息，知识库里是绍兴市每天的城市运行情况，如经济活力、交通运行、环境质量等方面的信息'''
     inputs = {
         'question': {
             'type': 'string',
-            'description': '用户提出的问题'
+            'description': '用户问题'
+        },
+        'k': {
+            'type': 'integer',
+            'description': '返回的文档数量，默认为3'
         }
     }
     output_type = 'string'
@@ -137,31 +154,10 @@ class RagTool(Tool):
             embedding_model='bge-m3'
         )
 
-        self.model_name = 'qwen30b'
-
-    def forward(self, question: str):
-        time_now = time.strftime('%Y年%m月%d日')
-
+    def forward(self, question: str, k: int):
         search_results = self.chroma_client.vector_store.similarity_search(
             query=question,
-            k=3
+            k=k
         )
         context = '\n---\n'.join([doc.page_content for doc in search_results])
-
-        prompt = kb_chat_prompt.format(
-            content=context,
-            question=question,
-            time_now=time_now
-        )
-        messages = [
-            {'role': 'user', 'content': prompt},
-        ]
-        request_data = {
-            'model': self.model_name,
-            'messages': messages,
-            'temperature': 0,
-        }
-        response = requests.post(model_url, json=request_data)
-        output = response.json()['choices'][0]['message']['content']
-
-        return output
+        return context

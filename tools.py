@@ -5,6 +5,8 @@ from smolagents import Tool
 
 from chroma import ChromaDBClient
 
+model_url = 'http://localhost:9997/v1/chat/completions'
+
 sql_prompt = '''
 根据提供的数据库表结构，使用sql代码来回答用户问题。回答要求：
 1,使用一段sql代码来回答用户问题，sql代码以```sql开头，以```结尾。
@@ -18,22 +20,6 @@ sql_prompt = '''
 {question}
 ```
 '''
-
-kb_chat_prompt = '''你是一个智能问答助手，根据文档信息回答用户问题。
-文档信息如下：
-```
-{content}
-```
-用户问题如下：
-```
-{question}
-```
-回答要求：
-1,当前的日期是{time_now}，根据当前日期和文档信息回答用户问题。
-2,根据文档信息回答，不要自己编造答案，回答要简洁明了。
-'''
-
-model_url = 'http://localhost:9997/v1/chat/completions'
     
 def get_cursor():
     db = pymysql.connect(
@@ -159,5 +145,5 @@ class DocSearchTool(Tool):
             query=question,
             k=k
         )
-        context = '\n---\n'.join([doc.page_content for doc in search_results])
-        return context
+        content = '\n---\n'.join([doc.page_content for doc in search_results])
+        return content
